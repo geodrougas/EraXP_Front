@@ -1,0 +1,158 @@
+@using EraXp.Frontend.Utils
+@using EraXp.Frontend.Models.Dto
+@using System.ComponentModel.DataAnnotations
+@inject HttpClient client
+@inject IDialogService dialog
+
+<EditForm Model="Form" OnValidSubmit="OnSubmit">
+    <DataAnnotationsValidator/>
+    <MudDialog>
+        <DialogContent>
+            @if (UniversityState is DataState<UniversityDto>.Data dataState)
+            {
+                <MudSelect T="ItemPair" @bind-Value="@Form.ErasmusTransportations" Label="Amount of Erasmus transportations">
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("None", 15m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("One", 5m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("Two or more", 0m)" />
+                </MudSelect>
+                <MudSelect T="ItemPair" @bind-Value="@Form.AverageGrade" Label="Average Grade">
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("0", 0m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("1", 2m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("2", 4m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("3", 6m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("4", 8m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("5", 10m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("6", 12m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("7", 14m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("8", 16m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("9", 18m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("10", 20m)" />
+                </MudSelect>
+                <MudSelect T="ItemPair" @bind-Value="@Form.Year" Label="Year of study">
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("First", 5m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("Second Or Third", 20m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("Fourth", 15m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("Fifth or higher", 10m)" />
+                </MudSelect>
+                <MudSelect T="ItemPair" @bind-Value="@Form.PercentageOfClassesFailed" Label="Percentage of classes failed">
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("[0...10)%", 20m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("[10...20)%", 15m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("[20...50)%", 10m)" />
+                    <MudSelectItem T="ItemPair" Value="@ItemPair.Create("[50...100]%", 0m)" />
+                </MudSelect>
+                <MudSelect T="ItemPair" @bind-Value="@Form.LanguageLevel" Label="@($"Language Certification Level ({dataState.Item.Language.Language})")">
+                    @foreach (var item in dataState.Item.Language.LanguageSkills)
+                    {
+                        <MudSelectItem T="ItemPair" Value="@ItemPair.Create(item.Item1, item.Item2)" />
+                    }
+                </MudSelect>
+            }
+            else if (UniversityState is DataState<UniversityDto>.Error errorState)
+            {
+                <div class="d-flex flex-column justify-center align-center pa-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Error" Size="@Size.Large"/>
+                    <h1>@errorState.Message</h1>
+                </div>
+            }
+            else
+            {
+                <div class="d-flex flex-column justify-center align-center pa-3">
+                    <MudProgressCircular Indeterminate="true"/>
+                    <h1>Loading...</h1>
+                </div>
+            }
+        </DialogContent>
+        <DialogActions>
+            @if (UniversityState is DataState<UniversityDto>.Data)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" ButtonType="ButtonType.Submit">Calculate</MudButton>
+            }
+        </DialogActions>
+    </MudDialog>
+</EditForm>
+
+@code {
+    [Parameter]
+    public string UniversityId { get; set; }
+    [Parameter]
+    public string DepartmentId { get; set; }
+
+    public DataState<UniversityDto> UniversityState = DataState.Loading<UniversityDto>();
+
+    class ItemPair
+    {
+        public string Name { get; set; }
+        public decimal Value { get; set; }
+
+        public override string ToString()
+        {
+            return Name;
+        }
+
+        public static ItemPair Create(string name, decimal value)
+        {
+            return new ItemPair
+            {
+                Name = name,
+                Value = value
+            };
+        }
+    }
+
+    class ScoreForm
+    {
+        [Required]
+        public ItemPair? ErasmusTransportations { get; set; } = null;
+        [Required]
+        public ItemPair? AverageGrade { get; set; } = null;
+        [Required]
+        public ItemPair? Year { get; set; } = null;
+        [Required]
+        public ItemPair? PercentageOfClassesFailed { get; set; } = null;
+        [Required]
+        public ItemPair? LanguageLevel { get; set; } = null;
+
+        public decimal GetPoints()
+        {
+            return ErasmusTransportations.Value +
+                   AverageGrade.Value +
+                   Year.Value +
+                   PercentageOfClassesFailed.Value +
+                   LanguageLevel.Value;
+        }
+    }
+
+    ScoreForm Form { get; set; } = new ScoreForm();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        LoadUniversity();
+    }
+
+    private async Task LoadUniversity()
+    {
+        try
+        {
+            UniversityDto? universityDto = await client.GetFromJsonAsync<UniversityDto>($"university/{UniversityId}/complete");
+
+            if (universityDto == null)
+            {
+                UniversityState = DataState.Error<UniversityDto>("Failed to load the university!");
+                return;
+            }
+            
+            UniversityState = DataState.Data(universityDto);
+        }
+        catch (Exception ex)
+        {
+            UniversityState = DataState.Error<UniversityDto>("Failed to load the university!");
+        }
+        StateHasChanged();
+    }
+
+    public async Task OnSubmit()
+    {
+        await dialog.ShowMessageBox("Info", $"You managed a score of ({Form.GetPoints()}).");
+    }
+}

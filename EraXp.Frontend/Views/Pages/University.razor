@@ -1,0 +1,360 @@
+﻿@page "/university/{Id}"
+@using EraXp.Frontend.Models.Dto
+@using EraXP_Back.Models.Dto
+@using EraXP_Back.Models.Domain.Enum
+@using EraXp.Frontend.Utils
+@using EraXp.Frontend.Views.Dialog
+@inject HttpClient client
+@inject ISnackbar snackbar
+@inject IDialogService dialogService
+
+<PageTitle>@Title</PageTitle>
+
+@{
+    if (UniversityDto == null && Error == null)
+    {
+        <div class="d-flex mud-height-full justify-center align-items-center">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary"/>
+        </div>
+    }
+    else if (UniversityDto != null)
+    {
+        <MudText Typo="Typo.h2">@UniversityDto.Name</MudText>
+        
+        <MudText Typo="Typo.body1">@UniversityDto.Description</MudText>
+        
+        <br/>
+        <MudDivider Vertical="false"/>
+        <br/>
+        
+        @if (UniversityDto.PhotoMetadata is { Count: > 0 } || User.UserType == UserType.Admin)
+        {
+            bool AutoCycle = User.UserType != UserType.Admin;
+            if (User.UserType == UserType.Admin)
+            {
+                <div class="d-flex flex-row justify-end">
+                    <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Remove" OnClick="@DeleteImage"/>
+                    <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="@AddImage"/>
+                </div>
+            }
+
+            <MudCarousel class="mud-width-full" Style="height: 400px" 
+                         ShowBullets="true" EnableSwipeGesture="true" AutoCycle="@AutoCycle" 
+                         TData="object" @bind-SelectedIndex="@SelectedIndex">
+                @foreach (UniversityPhotoDto image in UniversityDto.PhotoMetadata)
+                {
+                    <MudCarouselItem Transition="Transition.Slide" Color="Color.Transparent"
+                                     Class="d-flex justify-center pa-2">
+                        <MudImage Src="@image.Uri"/>
+                    </MudCarouselItem>
+                }
+            </MudCarousel>
+        }
+        <br/>
+        <MudDivider Vertical="false"/>
+        <br/>
+        @if (UniversityDto.Departments is { Count: > 0 } || User.UserType == UserType.Admin)
+        {
+            if (User.UserType == UserType.Admin)
+            {
+                <div class="d-flex flex-row justify-space-between">
+                    <MudText Typo="Typo.h5">Departments</MudText>
+                    <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="@AddDepartment"/>
+                </div>
+            }
+            else
+            {
+                <MudText Typo="Typo.h5">Departments</MudText>
+            }
+            <MudGrid Spacing="4" Class="pa-2 justify-xs-center justify-sm-start">
+                @foreach (DepartmentDto departmentDto in UniversityDto.Departments)
+                {
+                    <MudItem>
+                        <MudCard Style="width: 400px">
+                            <MudCardHeader Class="justify-space-between">
+                                @departmentDto.Name
+                                @if (User.UserType == UserType.Admin)
+                                {
+                                    <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Remove" OnClick="() => DeleteDepartment(departmentDto)"/>
+                                }
+                            </MudCardHeader>
+                            <MudCardContent>
+                                @departmentDto.Description
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudSpacer/>
+                                <MudButton Href="@GetDepartmentPage(UniversityDto, departmentDto)">
+                                    Visit
+                                </MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+        <br/>
+        @if (User.UserType == UserType.Admin || (User.UserType == UserType.Professor && User.UniversityId == UniversityDto.Id))
+        {
+            <h3>Languages</h3>
+            @if (UniversityLanguageState.IsLoading)
+            {
+                <MudProgressCircular Indeterminate="true"/>
+            }
+            else
+            {
+                <MudSelect T="LanguageDto" @bind-Value="@LanguageDto" Text="@(LanguageDto?.Name)" Label="University Language" 
+                           Error="UniversityLanguageState.IsError" ErrorText="@UniversityLanguageState.ErrorMessage"
+                           HelperText="@UniversityLanguageState.LoadingMessage" ReadOnly="User.UserType != UserType.Admin">
+                    @if (UniversityLanguageState is DataState<List<LanguageDto>>.Data successState)
+                    {
+                        foreach (var item in successState.Item)
+                        {
+                            <MudSelectItem T="LanguageDto" Value="item" />
+                        }
+                    }
+                </MudSelect>
+            } 
+            <br/>
+            @if (LanguageDto != null)
+            {
+                <MudPaper Class="py-2 px-4">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="5" Class="d-flex align-center">
+                            <MudText>Name</MudText>
+                        </MudItem>
+                        <MudItem xs="1"/>
+                        <MudItem xs="5" Class="d-flex align-center">
+                            <MudText>Value</MudText>
+                        </MudItem>
+                        <MudItem xs="1" Class="d-flex justify-center">
+                            @if (User.UserType == UserType.Admin)
+                            {
+                                <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="AddItem"/>
+                            }
+                        </MudItem>
+                        @foreach (var languageLevel in LanguagePoints)
+                        {
+                            <MudItem xs="5">
+                                <MudTextField T="string" @bind-Value="@languageLevel.Name" ReadOnly="User.UserType != UserType.Admin"></MudTextField>
+                            </MudItem>
+                            <MudItem xs="1" Class="d-flex justify-center">-</MudItem>
+                            <MudItem xs="5">
+                                <MudTextField T="decimal" @bind-Value="@languageLevel.Value" InputType="InputType.Number" ReadOnly="User.UserType != UserType.Admin"/>
+                            </MudItem>
+                            <MudItem xs="1" Class="d-flex justify-center">
+                                @if (User.UserType == UserType.Admin)
+                                {
+                                    <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Remove" OnClick="() => RemoveItem(languageLevel)"/>
+                                }
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudPaper>
+            }
+            @if (User.UserType == UserType.Admin)
+            {
+                <br/>
+                <div class="d-flex flex-row justify-end">
+                    <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="() => UpdateUniversityWithLanguages()">Save</MudButton>
+                </div>
+            }
+            <br/>
+        }
+    }
+}
+
+@code {
+    [CascadingParameter]
+    public UserDto User { get; set; }
+    
+    [Parameter]
+    public string Id { get; set; }
+    public string Title { get; set; } = "EraXP - University";
+    public string? Error = null;
+
+    public UniversityDto? UniversityDto = null;
+
+    public int SelectedIndex = 0;
+    
+    private LanguageDto? LanguageDto { get; set; } = null;
+    private DataState<List<LanguageDto>> UniversityLanguageState = DataState.Loading<List<LanguageDto>>();
+    private List<UniversityLanguageLevel> LanguagePoints { get; set; } = new();
+    
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        InitUniversityLanguages();
+        await Task.Delay(1000);
+        await Refresh();
+    }
+
+    private async Task Refresh()
+    {
+        UniversityDto = await client.GetFromJsonAsync<UniversityDto>($"university/{Id}/complete");
+        LanguageDto = new LanguageDto(
+            UniversityDto.Language.Id,
+            UniversityDto.Language.Language
+        );
+        LanguagePoints = UniversityDto.Language.LanguageSkills.Select(
+                m => new UniversityLanguageLevel { Name = m.Item1, Value = m.Item2 })
+            .ToList();
+        Title = $"EraXP - {UniversityDto!.Name}";
+        StateHasChanged();
+    }
+
+    public string GetDepartmentPage(UniversityDto dto, DepartmentDto departmentDto)
+    {
+        return $"/university/{dto.Id}/department/{departmentDto.Id}";
+    }
+
+    public async Task AddImage()
+    {
+        DialogParameters parameters = new DialogParameters()
+        {
+            ["UniversityId"] = UniversityDto!.Id
+        };
+        DialogOptions options = new DialogOptions()
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+        IDialogReference dialogReference = await dialogService.ShowAsync<AddUniPhoto>("Add University Photo", parameters, options);
+        await dialogReference.Result;
+        await Refresh();
+    }
+
+    public async Task DeleteImage()
+    {
+        try
+        {
+            if (UniversityDto!.PhotoMetadata == null || UniversityDto.PhotoMetadata.Count == 0)
+            {
+                snackbar.Add("No image available to delete!", Severity.Error);
+                return;
+            }
+            UniversityPhotoDto photoDto = UniversityDto!.PhotoMetadata![SelectedIndex];
+            await client.DeleteAsync($"university/{photoDto.UniversityId}/photo/{photoDto.PhotoId}");
+            snackbar.Add($"Deleted image on index {SelectedIndex}.", Severity.Success);
+            await Refresh();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to delete image!", Severity.Error);
+        }
+    }
+    
+    public async Task AddDepartment()
+    {
+        DialogParameters parameters = new DialogParameters()
+        {
+            ["UniversityId"] = UniversityDto!.Id
+        };
+        DialogOptions options = new DialogOptions()
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+        var dialogReference = dialogService.Show<AddUniDepartment>("Add Department", parameters, options);
+        await dialogReference.Result;
+        await Refresh();
+    }
+
+    public async Task DeleteDepartment(DepartmentDto dto)
+    {
+        try
+        {
+            HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Delete, $"university/{dto.UniversityId}/department");
+            requestMessage.Content = JsonContent.Create(dto);
+            HttpResponseMessage message = await client.SendAsync(requestMessage);
+
+            if (!message.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to delete department!", Severity.Error);
+                return;
+            }
+            
+            snackbar.Add($"Deleted department {dto.Name}.", Severity.Success);
+            await Refresh();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to delete department!", Severity.Error);
+        }
+    }
+
+    private Task AddItem()
+    {
+        LanguagePoints.Add(new());
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveItem(UniversityLanguageLevel languageLevel)
+    {
+        LanguagePoints.Remove(languageLevel);
+        return Task.CompletedTask;
+    }
+
+    public async Task UpdateUniversityWithLanguages()
+    {
+        try
+        {
+            if (UniversityDto == null)
+            {
+                snackbar.Add("You must wait for the university to load!", Severity.Error);
+                return;
+            }
+
+            if (LanguageDto == null)
+            {
+                snackbar.Add("You need to select a language if you want to update it!", Severity.Error);
+                return;
+            }
+            List<Tuple<string, decimal>> languages =
+                LanguagePoints.Select(m => Tuple.Create(m.Name!, m.Value)).ToList();
+            var universityDto = UniversityDto! with
+            {
+                Language = new UniversityLanguage(LanguageDto!.Id, LanguageDto.Name, languages)
+            };
+
+            HttpResponseMessage response = await client.PutAsJsonAsync($"university", universityDto);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to update university!", Severity.Error);
+                return;
+            }
+            
+            snackbar.Add($"University updated.", Severity.Success);
+            await Refresh();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to update university!", Severity.Error);
+        }
+    }
+
+    private async Task InitUniversityLanguages()
+    {
+        try
+        {
+            List<LanguageDto>? languageDtos = await client.GetFromJsonAsync<List<LanguageDto>>("language");
+
+            if (languageDtos == null)
+            {
+                UniversityLanguageState = DataState.Error<List<LanguageDto>>("Invalid return message!");
+                return;
+            }
+
+            UniversityLanguageState = DataState.Data(languageDtos);
+        }
+        catch (Exception ex)
+        {
+            UniversityLanguageState = DataState.Error<List<LanguageDto>>(ex.Message);
+        }
+        StateHasChanged();
+    }
+}

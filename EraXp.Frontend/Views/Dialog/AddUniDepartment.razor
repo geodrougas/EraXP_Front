@@ -1,0 +1,82 @@
+@using System.ComponentModel.DataAnnotations
+@inject ISnackbar snackbar
+@inject HttpClient client
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string?" For="() => Form.Name" @bind-Text="@Form.Name" Label="Name"/>
+        <MudTextField T="string?" For="() => Form.Description" @bind-Text="@Form.Description" Label="Description" Lines="3"/>
+    </DialogContent>
+    <DialogActions>
+            <MudButton Variant="Variant.Outlined" OnClick="@Cancel">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" OnClick="@Create">Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public Guid? UniversityId { get; set; }
+
+    public class DepartmentForm
+    {
+        public DepartmentForm(Guid universityId)
+        {
+            UniversityId = universityId;
+        }
+
+        public Guid UniversityId { get; set; }
+        [Required]
+        public string? Name { get; set; }
+        [Required]
+        public string? Description { get; set; }
+    }
+
+    public DepartmentForm Form { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Form = new DepartmentForm(UniversityId!.Value);
+        base.OnInitialized();
+
+        if (UniversityId == null)
+        {
+            snackbar.Add("Failed to parse university id!", Severity.Error);
+            MudDialog.Cancel();
+        }
+        
+        snackbar.Clear();
+        snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+        snackbar.Configuration.VisibleStateDuration = 2000;
+        snackbar.Configuration.PreventDuplicates = false;
+    }
+
+    public async Task Create()
+    {
+        try
+        {
+            HttpResponseMessage message = await client.PostAsJsonAsync($"university/{UniversityId}/department", Form);
+
+            if (!message.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to add department!", Severity.Error);
+                return;
+            }
+            
+            snackbar.Add("Added department successfully!", Severity.Success);
+            MudDialog.Cancel();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            snackbar.Add("Failed to add department!", Severity.Error);
+        }
+    }
+
+    public async Task Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

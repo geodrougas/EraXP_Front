@@ -1,0 +1,85 @@
+@inject ISnackbar snackbar
+@inject HttpClient client
+
+<MudDialog>
+    <DialogContent>
+        <MudFileUpload Class="my-3" Hidden="false" T="IBrowserFile" 
+                       Context="fileInput" Accept=".png" @bind-Files="@File">
+            <ButtonTemplate>
+                <MudFab HtmlTag="label"
+                        Color="Color.Secondary"
+                        Icon="@Icons.Material.Filled.Image"
+                        Label="LOAD PICTURE"
+                        for="fileInput"/>
+            </ButtonTemplate>
+        </MudFileUpload>
+    </DialogContent>
+    <DialogActions>
+            <MudButton Variant="Variant.Outlined" OnClick="@Cancel">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" OnClick="@AddFile">Add</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; }
+
+    [Parameter]
+    public Guid? UniversityId { get; set; }
+
+    private IBrowserFile? File { get; set; }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        if (UniversityId == null)
+        {
+            snackbar.Add("Failed to parse university id!", Severity.Error);
+            MudDialog.Cancel();
+        }
+        
+        snackbar.Clear();
+        snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+        snackbar.Configuration.VisibleStateDuration = 2000;
+        snackbar.Configuration.PreventDuplicates = false;
+    }
+
+    public async Task AddFile()
+    {
+        try
+        {
+            if (File == null)
+            {
+                snackbar.Add("You must provide an image!", Severity.Error);
+                return;
+            }
+            
+            MultipartFormDataContent formDataContent = new MultipartFormDataContent();
+            formDataContent.Add(new StreamContent(File.OpenReadStream(long.MaxValue)), "Photo", "newphoto.png");
+            HttpRequestMessage requestMessage = new HttpRequestMessage(HttpMethod.Post, $"university/{UniversityId}/photo");
+            requestMessage.Content = formDataContent;
+            HttpResponseMessage responseMessage = await client.SendAsync(requestMessage);
+
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                Console.WriteLine("Failure status code " + responseMessage.StatusCode);
+                snackbar.Add("Failed to add image!", Severity.Error);
+                return;
+            }
+            
+            snackbar.Add("Added image successfully!", Severity.Success);
+            MudDialog.Cancel();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            snackbar.Add("Failed to add image!", Severity.Error);
+        }
+    }
+
+    public async Task Cancel()
+    {
+        MudDialog.Cancel();
+    }
+}

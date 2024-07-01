@@ -1,0 +1,47 @@
+﻿@using System.Net
+@using EraXP_Back.Models.Dto
+@using EraXp.Frontend.Controller
+@inject HttpClient client
+@inject NavigationManager navManager
+@inject UserController userController
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="routeData">
+        <CascadingValue Value="User">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
+            <FocusOnNavigate RouteData="@routeData" Selector="h1"/>
+        </CascadingValue>
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <p role="alert">Sorry, there's nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+
+@code
+{
+    [CascadingParameter] public UserDto? User { get; set; }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        userController.UserEvent += user =>
+        {
+            this.User = user;
+            StateHasChanged();
+        };
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await Login();
+        return;
+    }
+
+    public async Task Login()
+    {
+        await userController.GetUser();
+    }
+}

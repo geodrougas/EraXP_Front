@@ -1,0 +1,104 @@
+﻿@page "/universities"
+@using EraXp.Frontend.Models.Dto
+@using EraXP_Back.Models.Dto
+@using EraXP_Back.Models.Domain.Enum
+@using EraXp.Frontend.Views.Dialog
+@inject HttpClient client
+@inject IDialogService dialog
+
+<PageTitle>EraXp - Universities</PageTitle>
+
+<div class="d-flex mb-15">
+    <MudSpacer/>
+    <MudTextField T="string" @bind-Value="@Search" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" AdornmentColor="Color.Primary" Variant="Variant.Outlined"/>
+    <MudSpacer/>
+    @if (User.UserType == UserType.Admin)
+    {
+        <div class="d-flex flex-column justify-center">
+            <MudButton Variant="Variant.Filled" Color="@Color.Success" EndIcon="@Icons.Material.Filled.Add" OnClick="NewUniversity">New</MudButton>
+        </div>
+    }
+</div>
+<MudGrid Spacing="8" Justify="Justify.Center">
+    @foreach (UniversityDto dto in AppearingList)
+    {
+        <MudItem>
+            <MudCard Style="max-width: 30em">
+                @if (dto.ThumbnailId != null)
+                {
+                    <MudCardMedia Image="@dto.GetImageUrl(client.BaseAddress?.ToString())"></MudCardMedia>
+                }
+                <MudCardHeader>
+                    <h3>@dto.Name</h3>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudText T="string" Style="height: 12ex; overflow: clip">
+                        @dto.Description
+                    </MudText>
+                </MudCardContent>
+                <MudCardActions Class="d-flex justify-space-between">
+                    <MudButton Href="@dto.GetUniversityUrl()">
+                        Visit
+                    </MudButton>
+                    <MudButton Href="@dto.AddressDto!.GoogleMapsLocation">
+                        <MudIcon Icon="@Icons.Material.Filled.LocationOn"></MudIcon>
+                        @dto.AddressDto.Name
+                    </MudButton>
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+
+@code {
+    [CascadingParameter]
+    public UserDto User { get; set; }
+    
+    string _search = "";
+    string Search
+    {
+        get => _search;
+        set
+        {
+            _search = value;
+            AppearingList = UniversityList.Where(m => m.Name.Contains(_search)).ToList();
+            StateHasChanged();
+        }
+    }
+
+    ICollection<UniversityDto> UniversityList { get; set; } = ArraySegment<UniversityDto>.Empty;
+    ICollection<UniversityDto> AppearingList { get; set; } = ArraySegment<UniversityDto>.Empty;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await base.OnInitializedAsync();
+            UniversityList = await client.GetFromJsonAsync<List<UniversityDto>>("university/all");
+
+            AppearingList = new List<UniversityDto>(UniversityList);
+        }
+        catch (Exception ex)
+        {
+            await dialog.ShowMessageBox("Error", ex.Message);
+        }
+    }
+
+    public string? GetUri(UniversityDto dto)
+    {
+        if (dto.ThumbnailId == null)
+            return null;
+        return Path.Combine(client.BaseAddress.ToString(), $"photo/{dto.Id}");
+    }
+
+    public async Task NewUniversity()
+    {
+        var result = await dialog.ShowAsync<NewUniversityDialog>("Create University", new DialogOptions
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        });
+    }
+}

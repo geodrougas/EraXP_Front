@@ -1,0 +1,295 @@
+@page "/university/{UniversityId}/department/{DepartmentId}"
+@using EraXp.Frontend.Utils
+@using EraXp.Frontend.Models.Dto
+@using System.Reflection.Emit
+@using EraXP_Back.Models.Domain.Enum
+@using EraXP_Back.Models.Dto
+@using EraXp.Frontend.Views.Dialog
+@using System.Net
+@inject HttpClient client
+@inject IDialogService dialog
+@inject ISnackbar snackbar
+
+<PageTitle>@Title</PageTitle>
+@{
+    if (DepartmentDataState is DataState<DepartmentDto>.Data departmentDataState)
+    {
+        var departmentDto = departmentDataState.Item;
+        if (User.UserType == UserType.Student)
+        {
+            <div class="d-flex flex-row justify-space-between">
+                <MudText Typo="Typo.h2">@departmentDto.Name</MudText>
+                <div class="d-flex flex-column justify-center">
+                    <MudButton Variant="Variant.Filled" Color="Color.Tertiary" Icon="@Icons.Material.Filled.Ballot" OnClick="LaunchScoreDialog">Check Points</MudButton>
+                </div>
+            </div>
+        }
+        else
+        {
+            <MudText Typo="Typo.h2">@departmentDto.Name</MudText>
+        }
+        <br/>
+        <MudText Typo="Typo.body1">@departmentDto.Description</MudText>
+        <br/>
+        @if (departmentDto.Courses != null || User.UserType == UserType.Admin)
+        {
+            <MudDivider Vertical="false"/>
+            <br/>
+            <div class="d-flex flex-row justify-space-between">
+                <MudText Typo="Typo.h5">
+                    Courses
+                </MudText>
+                @if (User.UserType == UserType.Admin)
+                {
+                    <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="AddCourse"/>
+                }
+            </div>
+            <br/>
+            <MudExpansionPanels MultiExpansion="true">
+                @foreach (KeyValuePair<string, List<CourseDto>> item in departmentDto.CoursesMap)
+                {
+                    <MudExpansionPanel Text="@item.Key">
+                        <MudTable T="CourseDto" Items="@item.Value" Hover="true" Breakpoint="Breakpoint.Sm">
+                            <HeaderContent>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Ects</MudTh>
+                                @if (User.UserType == UserType.Admin)
+                                {
+                                    <MudTh Class="w-auto"></MudTh>
+                                }
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Name">@context.Name</MudTd>
+                                <MudTd DataLabel="Ects">@context.Ects</MudTd>
+                                @if (User.UserType == UserType.Admin)
+                                {
+                                    <MudTh Class="w-auto">
+                                        <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Remove" OnClick="() => DeleteCourse(context)"/>
+                                    </MudTh>
+                                }
+                            </RowTemplate>
+                        </MudTable>
+                    </MudExpansionPanel>
+                }
+            </MudExpansionPanels>
+            <br/>
+        }
+        @if (departmentDto.Courses != null)
+        {
+            <MudDivider Vertical="false"/>
+            <br/>
+            <div class="d-flex flex-row justify-space-between">
+                <MudText Typo="Typo.h5">
+                    Professor Contacts
+                </MudText>
+                @if (User.UserType == UserType.Admin)
+                {
+                    <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="AddContact"/>
+                }
+            </div>
+            <br/>
+            <MudGrid>
+                @foreach (ContactDto contact in departmentDto.Contacts)
+                {
+                    <MudItem>
+                        <MudCard>
+                            <MudCardContent>
+                                <div class="d-flex flex-row justify-space-between align-end">
+                                    <div><b>Όνομα:</b> @contact.Name</div>
+                                    @if (User.UserType == UserType.Admin)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Remove" Color="Color.Error" OnClick="() => RemoveContact(contact)"/>
+                                    }
+                                </div>
+                                <div><b>Επώνυμο:</b> @contact.Lastname</div>
+                                <div><b>Email:</b> @contact.Email</div>
+                                <div><b>Τηλέφωνο:</b> @contact.PhoneNumber</div>
+                            </MudCardContent>
+                            <MudCardActions>
+                                <MudButton StartIcon="@Icons.Material.Outlined.Phone" Href="@contact.GetTel()">Call</MudButton>
+                                <MudButton StartIcon="@Icons.Material.Outlined.Email" Href="@contact.GetMailTo()">Email</MudButton>
+                            </MudCardActions>
+                        </MudCard>
+                    </MudItem>
+                }
+            </MudGrid>
+        }
+    }
+    else if (DepartmentDataState is DataState<DepartmentDto>.Error errorDataState)
+    {
+        <div class="d-flex mud-height-full justify-center align-items-center">
+            <MudIcon Icon="@Icons.Material.Filled.Error" Color="Color.Error" Size="Size.Large" Class="mr-2"/>
+            <MudText Typo="Typo.h3">@errorDataState.Message</MudText>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex mud-height-full justify-center align-items-center">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary"/>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] public UserDto User { get; set; }
+
+    [Parameter] public string UniversityId { get; set; }
+
+    [Parameter] public string DepartmentId { get; set; }
+
+    public string Title { get; set; } = "EraXP - Department";
+
+    public DataState<DepartmentDto> DepartmentDataState { get; set; } = DataState.Loading<DepartmentDto>();
+
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        LoadDepartment();
+    }
+
+    private async Task LoadDepartment()
+    {
+        try
+        {
+            DepartmentDataState = DataState.Loading<DepartmentDto>();
+            StateHasChanged();
+            List<DepartmentDto>? departmentDtos = await client.GetFromJsonAsync<List<DepartmentDto>>($"university/{UniversityId}/department/complete?id={DepartmentId}");
+
+            if (departmentDtos == null)
+            {
+                DepartmentDataState = DataState.Error<DepartmentDto>("Failed to load department!");
+                goto End;
+            }
+
+            if (departmentDtos.Count == 0)
+            {
+                DepartmentDataState = DataState.Error<DepartmentDto>("Department not found!");
+                goto End;
+            }
+
+            DepartmentDto departmentDto = departmentDtos.First();
+            Title = $"EraXP - {departmentDto.Name}";
+            DepartmentDataState = DataState.Data(departmentDto);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            DepartmentDataState = DataState.Error<DepartmentDto>("Failed to load department!");
+        }
+
+        End:
+        StateHasChanged();
+    }
+
+    private async Task DeleteCourse(CourseDto context)
+    {
+        try
+        {
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Delete, $"university/{UniversityId}/department/{DepartmentId}/course");
+            request.Content = JsonContent.Create(context);
+
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to delete course", Severity.Error);
+                goto End;
+            }
+
+            snackbar.Add("Course deleted successfully!", Severity.Success);
+            LoadDepartment();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to delete course", Severity.Error);
+        }
+
+        End:
+        StateHasChanged();
+    }
+
+    private async Task AddCourse()
+    {
+        DialogParameters parameters = new DialogParameters()
+        {
+            ["UniversityId"] = UniversityId,
+            ["DepartmentId"] = DepartmentId
+        };
+        DialogOptions options = new DialogOptions()
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+        var result = await dialog.ShowAsync<AddDepartmentCourse>("Add Department Course", parameters, options);
+        await result.Result;
+        LoadDepartment();
+    }
+
+    private async Task RemoveContact(ContactDto contact)
+    {
+        try
+        {
+            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Delete, $"university/{UniversityId}/department/{DepartmentId}/contact");
+            request.Content = JsonContent.Create(contact);
+
+            HttpResponseMessage response = await client.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to delete contact", Severity.Error);
+                goto End;
+            }
+
+            snackbar.Add("Contact deleted successfully!", Severity.Success);
+            LoadDepartment();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to delete contact", Severity.Error);
+        }
+
+        End:
+        StateHasChanged();
+    }
+
+    private async Task AddContact()
+    {
+        DialogParameters parameters = new DialogParameters()
+        {
+            ["UniversityId"] = UniversityId,
+            ["DepartmentId"] = DepartmentId
+        };
+        DialogOptions options = new DialogOptions()
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+        var result = await dialog.ShowAsync<AddDepartmentContact>("Add Department Contact", parameters, options);
+        await result.Result;
+        LoadDepartment();
+    }
+
+    private async Task LaunchScoreDialog()
+    {
+        DialogParameters parameters = new DialogParameters()
+        {
+            ["UniversityId"] = UniversityId,
+            ["DepartmentId"] = DepartmentId
+        };
+        DialogOptions options = new DialogOptions()
+        {
+            CloseButton = true,
+            CloseOnEscapeKey = true,
+            FullWidth = true,
+            MaxWidth = MaxWidth.Small
+        };
+        var result = await dialog.ShowAsync<ScoreCheckerDialog>("Score Calculator", parameters, options);
+        await result.Result;
+    }
+}

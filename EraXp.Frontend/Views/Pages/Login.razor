@@ -1,0 +1,84 @@
+@page "/login"
+@using System.ComponentModel.DataAnnotations
+@using EraXP_Back.Models.Dto
+@using EraXp.Frontend.Controller
+@layout ClearPage
+@inject HttpClient client
+@inject IDialogService dialog
+@inject UserController userController
+@inject NavigationManager navManager
+
+<div class="d-flex justify-center h-100 align-items-center bg-blue">
+    <div class="mud-elevation-4 rounded white px-4 py-4">
+        <h1>Era<span style="color: #258cfb">XP</span></h1>
+        <EditForm Model="@Model" OnValidSubmit="OnValidSubmit">
+            <DataAnnotationsValidator/>
+            <div class="d-flex flex-column">
+                <MudTextField T="string" For="() => Model.Username" Class="my-3" Style="width: 300px" @bind-Value="Model.Username" Label="Username"></MudTextField>
+                <MudTextField T="string" For="() => Model.Password" Class="my-3" Style="width: 300px" @bind-Value="Model.Password" InputType="InputType.Password" Label="Password"></MudTextField>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="my-5" ButtonType="ButtonType.Submit">Login</MudButton>
+            </div>
+        </EditForm>
+        <MudDivider/>
+        <h1 class="py-4">Register</h1>
+        <MudButtonGroup Color="Color.Primary" OverrideStyles="false" FullWidth="true">
+            <MudButton Class="flex-fill" Color="Color.Primary" FullWidth="true" OnClick="() => Register(140)">Professor</MudButton>
+            <MudButton Class="flex-fill" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="() => Register(100)">Student</MudButton>
+        </MudButtonGroup>
+    </div>
+</div>
+
+@code {
+
+    public class LoginModel
+    {
+        [Required]
+        public string? Username { get; set; }
+        [Required]
+        public string? Password { get; set; }
+        public int AuthorizationMethod => 1;
+    }
+
+    public LoginModel Model = new LoginModel();
+
+    public async Task OnValidSubmit(EditContext context)
+    {
+        try {
+            HttpResponseMessage message = await client.PostAsJsonAsync("login/json", Model);
+
+            if (!message.IsSuccessStatusCode)
+            {
+                await dialog.ShowMessageBox("Error", "Failed to log in.");
+                return;
+            }
+
+            await userController.GetUser();
+        }
+        catch (Exception ex)
+        {
+            await dialog.ShowMessageBox("Error", ex.Message);
+        }
+    }
+
+    public async Task Register(int userType)
+    {
+        try
+        {
+            HttpResponseMessage message = await client.GetAsync($"user/signup/generate?userType={userType}");
+
+            if (!message.IsSuccessStatusCode)
+            {
+                await dialog.ShowMessageBox("Error", "Failed to generate registration token!");
+                return;
+            }
+
+            string token = await message.Content.ReadAsStringAsync();
+
+            navManager.NavigateTo($"Registration/{token}");
+        }
+        catch (Exception ex)
+        {
+            await dialog.ShowMessageBox("Error", ex.Message);
+        }
+    }
+}

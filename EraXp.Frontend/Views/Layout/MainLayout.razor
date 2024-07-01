@@ -1,0 +1,56 @@
+﻿@using EraXP_Back.Models.Dto
+@using EraXp.Frontend.Controller
+@inherits LayoutComponentBase
+@inject HttpClient client
+@inject UserController userController
+
+<MudThemeProvider/>
+<MudDialogProvider/>
+<MudSnackbarProvider/>
+<MudPopoverProvider/>
+<MudLayout>
+    <MudAppBar ToolBarClass="d-flex align-text-center">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
+        EraXP
+        <MudSpacer/>
+        @if (User != null)
+        {
+            <MudMenu AnchorOrigin="Origin.BottomRight" >
+                <ActivatorContent>
+                    <MudAvatar Color="Color.Secondary" Elevation="2">@User.Username[..2]</MudAvatar>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="LogOut">Sign Out</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        }
+    </MudAppBar>
+    <MudDrawer @bind-Open="@_drawerOpen">
+        <NavMenu/>
+    </MudDrawer>
+    <MudMainContent>
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.ExtraExtraLarge" Style="min-height: 100dvh">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    [CascadingParameter]
+    public UserDto? User { get; set; }
+    bool _drawerOpen = true;
+
+    void DrawerToggle()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task LogOut()
+    {
+        await client.PostAsync("user/logout", null);
+        await userController.GetUser();
+    }
+
+}

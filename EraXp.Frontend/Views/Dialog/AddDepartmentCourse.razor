@@ -1,0 +1,79 @@
+@using System.ComponentModel.DataAnnotations
+@using EraXp.Frontend.Models.Dto
+@inject HttpClient client
+@inject ISnackbar snackbar
+
+<EditForm Model="Form" OnValidSubmit="Create">
+    <DataAnnotationsValidator/>
+    <MudDialog>
+        <DialogContent>
+            <MudTextField T="string?" For="() => Form.Name" @bind-Text="@Form.Name" Label="Name"/>
+            <MudTextField T="string?" For="() => Form.Semester" @bind-Text="@Form.Semester" Label="Semester"/>
+            <MudTextField T="string?" For="() => Form.Description" @bind-Text="@Form.Description" Label="Description" Lines="3"/>
+            <MudNumericField T="decimal" For="() => Form.Ects" @bind-Value="@Form.Ects" Label="Ects"/>
+        </DialogContent>
+        <DialogActions>
+            <MudButton Variant="Variant.Outlined" OnClick="@Cancel">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" ButtonType="ButtonType.Submit">Create</MudButton>
+        </DialogActions>
+    </MudDialog>
+</EditForm>
+
+@code {
+    [CascadingParameter]
+    MudDialogInstance MudDialog { get; set; }
+    
+    [Parameter]
+    public string UniversityId { get; set; }
+    
+    [Parameter]
+    public string DepartmentId { get; set; }
+
+    class CourseForm
+    {
+        [Required]
+        public string? Name { get; set; }
+        [Required]
+        public string? Semester  { get; set; }
+        [Required]
+        public string? Description { get; set; }
+        [Required]
+        public decimal Ects { get; set; }
+    }
+
+    CourseForm Form { get; set; } = new CourseForm();
+
+    public void Cancel()
+    {
+        MudDialog.Cancel();
+    }
+
+    public async Task Create()
+    {
+        try
+        {
+            CourseDto courseDto = new CourseDto(
+                null,
+                Guid.Parse(DepartmentId),
+                Form.Semester,
+                Form.Name,
+                Form.Description,
+                Form.Ects
+            );
+            HttpResponseMessage response = await client.PostAsJsonAsync($"university/{UniversityId}/department/{DepartmentId}/course", courseDto);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to add course", Severity.Error);
+                return;
+            }
+            
+            snackbar.Add("Course added successfully", Severity.Success);
+            MudDialog.Cancel();
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to add course", Severity.Error);
+        }
+    }
+}

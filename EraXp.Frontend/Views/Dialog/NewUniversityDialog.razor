@@ -1,0 +1,200 @@
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Text.Json
+@using EraXp.Frontend.Models.Dto
+@using EraXp.Frontend.Utils
+@inject ISnackbar snackbar
+@inject HttpClient client
+
+<EditForm Model="@FormModel" OnValidSubmit="OnValidSubmit">
+    <DataAnnotationsValidator/>
+    <div class="pa-2">
+        <MudTextField T="string" For="() => FormModel.Name" @bind-Text="@FormModel.Name" Label="Name"/>
+        <MudTextField T="string" For="() => FormModel.Description" @bind-Text="@FormModel.Description" Label="Description" Lines="3"/>
+        <br/>
+        <h3>Address</h3>
+        <MudTextField T="string?" For="() => FormModel.AddressName" @bind-Value="@FormModel.AddressName" Label="Address Name"/>
+        <MudTextField T="string?" For="() => FormModel.GoogleLocationId" @bind-Value="@FormModel.GoogleLocationId" Label="Google Location Id"/>
+        <MudTextField T="decimal" For="() => FormModel.Latitude" @bind-Value="@FormModel.Latitude" Label="Latitude"/>
+        <MudTextField T="decimal" For="() => FormModel.Longitude" @bind-Value="@FormModel.Longitude" Label="Longitude"/>
+        <br/>
+        <h3>Languages</h3>
+        @if (UniversityLanguageState.IsLoading)
+        {
+            <MudProgressCircular Indeterminate="true"/>
+        }
+        else
+        {
+            <MudSelect T="LanguageDto" @bind-Value="@LanguageDto" Text="@(LanguageDto?.Name)" Label="University Language" 
+                       Error="UniversityLanguageState.IsError" ErrorText="@UniversityLanguageState.ErrorMessage"
+                       HelperText="@UniversityLanguageState.LoadingMessage">
+                @if (UniversityLanguageState is DataState<List<LanguageDto>>.Data successState)
+                {
+                    foreach (var item in successState.Item)
+                    {
+                        <MudSelectItem T="LanguageDto" Value="item" />
+                    }
+                }
+            </MudSelect>
+        } 
+        <br/>
+        @if (LanguageDto != null)
+        {
+            <MudPaper Class="py-2 px-4">
+                <MudGrid Spacing="2">
+                    <MudItem xs="5" Class="d-flex align-center">
+                        <MudText>Name</MudText>
+                    </MudItem>
+                    <MudItem xs="1"/>
+                    <MudItem xs="5" Class="d-flex align-center">
+                        <MudText>Value</MudText>
+                    </MudItem>
+                    <MudItem xs="1" Class="d-flex justify-center">
+                        <MudIconButton Color="Color.Success" Icon="@Icons.Material.Filled.Add" OnClick="AddItem"/>
+                    </MudItem>
+                    @foreach (var languageLevel in FormModel.LanguagePoints)
+                    {
+                        <MudItem xs="5">
+                            <MudTextField T="string" @bind-Value="@languageLevel.Name"></MudTextField>
+                        </MudItem>
+                        <MudItem xs="1" Class="d-flex justify-center">-</MudItem>
+                        <MudItem xs="5">
+                            <MudTextField T="decimal" @bind-Value="@languageLevel.Value" InputType="InputType.Number"/>
+                        </MudItem>
+                        <MudItem xs="1" Class="d-flex justify-center">
+                            <MudIconButton Color="Color.Error" Icon="@Icons.Material.Filled.Remove" OnClick="() => RemoveItem(languageLevel)"/>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudPaper>
+        }
+        <br/>
+        <h3>Thumbnail</h3>
+        <MudFileUpload Class="my-3" Hidden="false" T="IBrowserFile" Context="fileInput" Accept=".png" @bind-Files="FormModel.Image">
+            <ButtonTemplate>
+                <MudFab HtmlTag="label"
+                        Color="Color.Secondary"
+                        Icon="@Icons.Material.Filled.Image"
+                        Label="LOAD PICTURE" 
+                        for="fileInput"/>
+            </ButtonTemplate>
+        </MudFileUpload>
+        <div class="d-flex justify-end ma-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Success" ButtonType="ButtonType.Submit">
+                Save
+            </MudButton>
+        </div>
+    </div>
+</EditForm>
+
+@code {
+    private class Form
+    {
+        [Required]
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        [Required]
+        public string? AddressName { get; set; }
+        [Required]
+        public string? GoogleLocationId { get; set; }
+        [Required]
+        public decimal Latitude { get; set; }
+        public Guid LanguageId { get; set; }
+        public string Language { get; set; }
+        public List<UniversityLanguageLevel> LanguagePoints { get; set; } = new();
+        [Required]
+        public decimal Longitude { get; set; }
+        public IBrowserFile? Image { get; set; }
+    }
+
+    private LanguageDto? LanguageDto { get; set; } = null;
+    private DataState<List<LanguageDto>> UniversityLanguageState = DataState.Loading<List<LanguageDto>>();
+    private Form FormModel { get; set; } = new Form();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        snackbar.Clear();
+        snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopCenter;
+        snackbar.Configuration.VisibleStateDuration = 2000;
+        snackbar.Configuration.PreventDuplicates = false;
+        InitUniversityLanguages();
+    }
+
+    private async Task InitUniversityLanguages()
+    {
+        try
+        {
+            List<LanguageDto>? languageDtos = await client.GetFromJsonAsync<List<LanguageDto>>("language");
+
+            if (languageDtos == null)
+            {
+                UniversityLanguageState = DataState.Error<List<LanguageDto>>("Invalid return message!");
+                return;
+            }
+
+            UniversityLanguageState = DataState.Data(languageDtos);
+        }
+        catch (Exception ex)
+        {
+            UniversityLanguageState = DataState.Error<List<LanguageDto>>(ex.Message);
+        }
+        StateHasChanged();
+    }
+
+    private void AddItem()
+    {
+        FormModel.LanguagePoints.Add(new UniversityLanguageLevel());
+    }
+    
+    private async Task OnValidSubmit()
+    {
+        try
+        {
+            if (LanguageDto == null)
+                return;
+            
+            Console.WriteLine(JsonSerializer.Serialize(FormModel));
+            MultipartFormDataContent content = new MultipartFormDataContent();
+            content.Add(new StringContent(FormModel.Name!), "Name");
+            if (FormModel.Description != null)
+            {
+                content.Add(new StringContent(FormModel.Description!), "Description");
+            }
+            content.Add(new StringContent(FormModel.AddressName!), "AddressName");
+            content.Add(new StringContent(FormModel.GoogleLocationId!), "GoogleLocationId");
+            content.Add(new StringContent(FormModel.Latitude.ToString(CultureInfo.InvariantCulture)), "Latitude");
+            content.Add(new StringContent(FormModel.Longitude.ToString(CultureInfo.InvariantCulture)), "Longitude");
+            content.Add(new StringContent(LanguageDto.Id.ToString()), "LanguageId");
+            content.Add(new StringContent(LanguageDto.Name), "Language");
+            content.Add(new StringContent(JsonSerializer.Serialize(FormModel.LanguagePoints)), "LanguagePoints");
+            if (FormModel.Image != null)
+            {
+                content.Add(new StreamContent(FormModel.Image.OpenReadStream()), "Image", "image.png");
+            }
+
+            HttpRequestMessage message = new HttpRequestMessage(HttpMethod.Post, "university");
+            message.Content = content;
+            HttpResponseMessage response = await client.SendAsync(message);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                snackbar.Add("Failed to create university!", Severity.Error);
+                return;
+            }
+
+            snackbar.Add("University was created!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            snackbar.Add("Failed to create university!", Severity.Error);
+        }
+    }
+
+    private Task RemoveItem(UniversityLanguageLevel languageLevel)
+    {
+        FormModel.LanguagePoints.Remove(languageLevel);
+        return Task.CompletedTask;
+    }
+
+}

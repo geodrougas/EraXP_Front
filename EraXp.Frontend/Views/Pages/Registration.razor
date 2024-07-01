@@ -1,0 +1,249 @@
+@page "/Registration/{Id}"
+@using EraXp.Frontend.Controller
+@using System.ComponentModel.DataAnnotations
+@using EraXP_Back.Models.Domain.Enum
+@using EraXp.Frontend.Models.Dto
+@using EraXp.Frontend.Utils
+@layout ClearPage
+@inject HttpClient client
+@inject IDialogService dialog
+@inject UserController userController
+@inject NavigationManager navManager
+
+<div class="d-flex justify-center h-100 align-items-center bg-blue">
+    @if (TokenState is DataState<SignupTokenDto>.Error error)
+    {
+        <MudIcon Icon="@Icons.Material.Filled.Error" Size="@Size.Large"/>
+        <h1> @error.Message</h1>
+    }
+    else if (TokenState is DataState<SignupTokenDto>.Data DataState)
+    {
+        <div class="mud-elevation-4 rounded white px-4 py-4">
+            <h1>Era<span style="color: #258cfb">XP</span></h1>
+            <EditForm Model="@Model" OnValidSubmit="OnValidSubmit">
+                <DataAnnotationsValidator/>
+                <div class="d-flex flex-column">
+                    <MudTextField T="string" For="() => Model.Username" Class="my-1" Style="width: 300px" @bind-Value="Model.Username" Label="Username"/>
+                    <MudTextField T="string" For="() => Model.Password" Class="my-1" Style="width: 300px" @bind-Value="Model.Password" InputType="InputType.Password" Label="Password"/>
+                    <MudTextField T="string" For="() => Model.PasswordRepeat" Class="my-1" Style="width: 300px" @bind-Value="Model.PasswordRepeat" InputType="InputType.Password" Label="Repeat Password"/>
+                    <MudTextField T="string" For="() => Model.Email" Class="my-1" Style="width: 300px" @bind-Value="Model.Email" InputType="InputType.Email" Label="Email"/>
+                    @if (DataState.Item.UserType == UserType.Professor
+                         || DataState.Item.UserType == UserType.Student
+                         || DataState.Item.UserType == UserType.UniAdmin)
+                    {
+                        <MudSelect T="UniversityDto" @bind-Value="Model.University" Class="my-1"
+                                   Error="UniversityState.IsError" ErrorText="@UniversityState.ErrorMessage"
+                                   HelperText="@UniversityState.LoadingMessage" Label="University">
+                            @if (UniversityState is DataState<List<UniversityDto>>.Data universityState)
+                            {
+                                foreach (var universityDto in universityState.Item)
+                                {
+                                    <MudSelectItem T="UniversityDto" Value="@universityDto">@universityDto</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    }
+                    @if (DataState.Item.UserType == UserType.Student)
+                    {
+                        <MudSelect T="DepartmentDto" @bind-Value="Model.Department" Class="my-1"
+                                   Error="DepartmentState.IsError" ErrorText="@DepartmentState.ErrorMessage"
+                                   HelperText="@DepartmentState.LoadingMessage" Label="Department">
+                            @if (DepartmentState is DataState<List<DepartmentDto>>.Data)
+                            {
+                                foreach (var departmentDto in FilteredDepartments)
+                                {
+                                    <MudSelectItem T="DepartmentDto" Value="@departmentDto">@departmentDto</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    }
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="my-5" ButtonType="ButtonType.Submit">Register</MudButton>
+                </div>
+            </EditForm>
+        </div>
+    }
+    else
+    {
+        <MudProgressCircular Indeterminate="true"/>
+        <h1>Loading...</h1>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Id { get; set; }
+    
+    public DataState<SignupTokenDto> TokenState { get; set; } = DataState.Loading<SignupTokenDto>();
+    public DataState<List<UniversityDto>> UniversityState { get; set; } = DataState.Loading<List<UniversityDto>>();
+    public DataState<List<DepartmentDto>> DepartmentState { get; set; } = DataState.Loading<List<DepartmentDto>>();
+    public IList<DepartmentDto> FilteredDepartments {
+        get {
+            if (!(DepartmentState is DataState<List<DepartmentDto>>.Data data))
+            {
+                return ArraySegment<DepartmentDto>.Empty;
+            }
+
+            if (Model.University == null)
+            {
+                return ArraySegment<DepartmentDto>.Empty;
+            }
+
+            return data.Item.Where(m => m.UniversityId == Model.University.Id).ToList();
+        }
+    }
+
+    public class RegistrationModel
+    {
+        [Required]
+        public string? Username { get; set; }
+        
+        [Required]
+        [StringLength(25, ErrorMessage = "The password needs to have between 8 and 25 characters!", MinimumLength = 8)]
+        public string? Password { get; set; }
+        
+        [Required]
+        [Compare(nameof(Password))]
+        public string? PasswordRepeat { get; set; }
+        
+        [Required]
+        [EmailAddress]
+        public string? Email { get; set; }
+        
+        public UniversityDto? University { get; set; }
+        
+        public DepartmentDto? Department { get; set; } 
+    }
+
+    public RegistrationModel Model = new RegistrationModel();
+
+    string? Message { get; set; }
+    
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        LoadSignupToken();
+    }
+
+    public async Task LoadSignupToken()
+    {
+        try
+        {
+            SignupTokenDto? tokenDto = await client
+                .GetFromJsonAsync<SignupTokenDto>($"user/signup/config/{Id}");
+            
+            
+            if (tokenDto == null)
+            {
+                TokenState = DataState.Error<SignupTokenDto>("Invalid token!");
+            }
+            else
+            {
+                TokenState = DataState.Data(tokenDto);
+
+                LoadSecondaryModels(tokenDto);
+            }
+        }
+        catch (Exception ex)
+        {
+            TokenState = DataState.Error<SignupTokenDto>(ex.Message);
+        }
+        StateHasChanged();
+    }
+
+    public async Task LoadSecondaryModels(SignupTokenDto token)
+    {
+        if (token.UserType == UserType.Professor 
+            || token.UserType == UserType.Student 
+            || token.UserType == UserType.UniAdmin)
+        {
+            await LoadUniversities();
+        }
+
+        if (token.UserType == UserType.Student)
+        {
+            await LoadDepartments();
+        }
+    }
+
+    public async Task LoadUniversities()
+    {
+        try
+        {
+            List<UniversityDto>? universityDtos = await client
+                .GetFromJsonAsync<List<UniversityDto>>($"University/all");
+
+            Console.Write(universityDtos);
+            
+            if (universityDtos == null)
+            {
+                UniversityState = DataState.Error<List<UniversityDto>>("Failed response!");
+            }
+            else
+            {
+                UniversityState = DataState.Data(universityDtos);
+            }
+        }
+        catch (Exception ex)
+        {
+            UniversityState = DataState.Error<List<UniversityDto>>(ex.Message);
+        }
+        StateHasChanged();
+    }
+    
+    public async Task LoadDepartments()
+    {
+        try
+        {
+            List<DepartmentDto>? departmentDtos = await client
+                .GetFromJsonAsync<List<DepartmentDto>>($"Department/all");
+            
+            if (departmentDtos == null)
+            {
+                DepartmentState = DataState.Error<List<DepartmentDto>>("Failed response!");
+            }
+            else
+            {
+                DepartmentState = DataState.Data(departmentDtos);
+            }
+        }
+        catch (Exception ex)
+        {
+            DepartmentState = DataState.Error<List<DepartmentDto>>(ex.Message);
+        }
+        StateHasChanged();
+    }
+
+    public async Task OnValidSubmit()
+    {
+        try
+        {
+            UniversityInfoDto? dto = null;
+            if (Model.University != null)
+            {
+                dto = new UniversityInfoDto(Model.University.Id!.Value, Model.Department?.Id);
+            }
+
+            SignUpDto signUpDto = new SignUpDto(
+                Model.Username,
+                Model.Password,
+                Model.PasswordRepeat,
+                Model.Email,
+                dto
+            );
+            
+            HttpResponseMessage responseMessage = await client.PostAsJsonAsync($"user/signup/{Id}", signUpDto);
+
+            if (!responseMessage.IsSuccessStatusCode)
+            {
+                await dialog.ShowMessageBox("Error", await responseMessage.Content.ReadAsStringAsync());
+                return;
+            }
+            
+            navManager.NavigateTo("login");
+        }
+        catch (Exception ex)
+        {
+            await dialog.ShowMessageBox("Error", ex.Message);
+        }
+    }
+}
